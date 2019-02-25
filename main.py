@@ -5,6 +5,8 @@ import PIL
 from PIL import Image, ImageTk
 from tkinter import filedialog
 from time import sleep
+from settings import *
+
 
 class Entry:
     def __init__(self, name, frame_object, widget_object_list, widget_variable_list):
@@ -15,7 +17,7 @@ class Entry:
 
     def clone_entry(self, frame):
         new_widget_objects = list()
-        clone_frame=tk.Frame(frame)
+        clone_frame = tk.Frame(frame)
         for i, widget in enumerate(self.widget_objects):
             new_widget_objects.append(self.clone_scale_widget(i, widget, clone_frame))
         return Entry(clone_frame, new_widget_objects, None)
@@ -33,6 +35,8 @@ class Entry:
         clone.set(widget.get())
         clone.grid(row=i, column=0)
         return clone
+
+
 #
 #
 # class CallBacks:
@@ -54,13 +58,13 @@ class Shared:
     def __init__(self):
         self.input_image_filename = "C:/Users/v_sam/Documents/PxlRT/PhotoImages/wheelie.jpg"
         self.output_image_filename = None
-        self.image_display_width = 300
+        self.image_display_width = (WIDTH_IMAGE_FRAME - 2 * PADX)
         self.input_img = cv2.imread(self.input_image_filename)
         self.input_imgtk = self.convert_image(self.input_img)
         self.output_img = self.input_img
         self.output_imgtk = self.input_imgtk
         self.generic_recipes = [["Blur", self.print_hello, ["kernel", 1, 7, 1]],
-                                ["Crop", self.print_goodbye, ["X", 0, 1, 0.01], ["Y", 0, 1, 0.01],
+                                ["Crop", self.print_hello, ["X", 0, 1, 0.01], ["Y", 0, 1, 0.01],
                                  ["width", 0, 1, 0.01], ["height", 0, 1, 0.01]],
                                 ["Blqw", self.print_hello, ["matrix", 1, 7, 1]]]
 
@@ -81,9 +85,12 @@ class Shared:
         self.output_imgtk = shared.output_imgtk
 
     # @staticmethod
-    def print_hello(self, n, m, x):
-        print("Hello", n,m, x)
-        self.output_img = self.input_img * 1
+    def print_hello(self, n, m, x, var, output_frame):
+        print("Hello", n, m, x)
+        print(var.get())
+        self.output_img = self.input_img * int(var.get())
+        self.output_imgtk = self.convert_image(self.output_img)
+        output_frame.image_label.config(image=self.output_imgtk)
 
     @staticmethod
     def print_goodbye(n, m, x):
@@ -126,7 +133,8 @@ class InputFrame():
 
     def openfile_callback(self):
         self.shared.input_image_filename = filedialog.askopenfilename(initialdir="/", title="Select file",
-                                              filetypes=(("jpeg files", "*.jpg"), ("all files", "*.*")))
+                                                                      filetypes=(
+                                                                      ("jpeg files", "*.jpg"), ("all files", "*.*")))
         self.shared.input_img = cv2.imread(self.shared.input_image_filename)
         self.shared.input_imgtk = self.shared.convert_image(self.shared.input_img)
         self.image_label.config(image=self.shared.input_imgtk)
@@ -150,25 +158,38 @@ class OutputFrame:
         self.save_button.grid(row=1, column=0)
 
     def savefile_callback(self):
-        self.shared.output_image_filename = filedialog.asksaveasfilename(initialdir = "/",title = "Select file",
-                                                     filetypes = (("jpeg files","*.jpg"),("all files","*.*")))
+        self.shared.output_image_filename = filedialog.asksaveasfilename(initialdir="/", title="Select file",
+                                                                         filetypes=(
+                                                                         ("jpeg files", "*.jpg"), ("all files", "*.*")))
 
 
 class FilterFrame:
     def __init__(self, root, output_frame, shared):
-        self.filter_frame = tk.Frame(root, width=shared.image_display_width*2, height=300, bg="green")
+        self.filter_frame = tk.Frame(root, width=WIDTH_FILTER_FRAME, height=HEIGHT_FILTER_FRAME, bg="green")
         self.filter_frame.grid(row=1, column=0, columnspan=2)
-        self.filter_frame.columnconfigure(1, minsize=400)
+        self.filter_frame.columnconfigure(0, minsize=WIDTH_FILTER_LISTBOX)
+        self.filter_frame.columnconfigure(1, minsize=WIDTH_FILTER_CONTROL_FRAME)
+        self.filter_frame.columnconfigure(2, minsize=WIDTH_FILTER_SLIDER_FRAME)
         self.filter_frame.grid_propagate(0)
         self.shared = shared
         self.output_frame = output_frame
         self.recipe_frames = list()
         self.generate_generic_recipe_frames()
-        self.recipe_listbox = tk.Listbox(self.filter_frame, height=10)
+        self.recipe_listbox = tk.Listbox(self.filter_frame, height=int(HEIGHT_FILTER_FRAME/FONT_POINTS_2_PIXELS))
         self.create_listbox_frame()
         self.current_active_recipe_frame = 1
-        self.recipe_frames[self.current_active_recipe_frame].frame_object.grid(row=0, column=1, sticky="NE")
+        self.recipe_frames[self.current_active_recipe_frame].frame_object.grid(row=0, column=2, sticky="N")
         self.recipe_listbox.grid(row=0, column=0, sticky="NW")
+        self.filter_control_frame = tk.Frame(self.filter_frame)
+        self.filter_control_frame.grid(row=0, column=1, sticky="NW")
+        self.add_button = tk.Button(self.filter_control_frame, text="Add")
+        self.mode_variable = tk.IntVar()
+        self.mode_variable.set(1)
+        self.single_filter_radiobutton = tk.Radiobutton(self.filter_control_frame, text="Single Filter", variable=self.mode_variable, value=1)
+        self.sequence_filter_radiobutton = tk.Radiobutton(self.filter_control_frame, text="Sequence Filter", variable=self.mode_variable, value=2)
+        self.add_button.pack(anchor="nw")
+        self.single_filter_radiobutton.pack(anchor="nw")
+        self.sequence_filter_radiobutton.pack(anchor="nw")
 
     def generate_generic_recipe_frames(self):
         for recipe_line in self.shared.generic_recipes:
@@ -181,7 +202,8 @@ class FilterFrame:
         variable_list = list()
         for row_, slider_definition in enumerate(recipe_line[2:]):
             widget_variable = tk.DoubleVar()
-            widget_variable.trace("w", recipe_line[1])
+            # widget_variable.trace("w", recipe_line[1])
+            widget_variable.trace("w", lambda a,b,c, var=widget_variable, output_frame=self.output_frame: recipe_line[1](a,b,c,var, output_frame))
             widget = tk.Scale(master=frame,
                               label=slider_definition[0],
                               from_=slider_definition[1],
@@ -190,7 +212,7 @@ class FilterFrame:
                               orient=tk.HORIZONTAL,
                               variable=widget_variable,
                               bg="yellow",
-                              length=300)
+                              length=WIDTH_FILTER_SLIDER_FRAME-2*PADX)
             widget.grid(row=row_, column=0)
             widget_list.append(widget)
             variable_list.append(widget_variable)
@@ -207,7 +229,7 @@ class FilterFrame:
         w = evt.widget
         index = int(w.curselection()[0])
         self.recipe_frames[self.current_active_recipe_frame].frame_object.grid_remove()
-        self.recipe_frames[index].frame_object.grid(row=0, column=1, sticky="N")
+        self.recipe_frames[index].frame_object.grid(row=0, column=2, sticky="N")
         self.current_active_recipe_frame = index
 
 
@@ -269,8 +291,18 @@ class FilterFrame:
 #     filename = filedialog.askopenfilename(initialdir = "/",title = "Select file",filetypes = (("jpeg files","*.jpg"),("all files","*.*")))
 #     return filename
 
-root = tk.Tk()
-root.geometry("800x500")
+def configure_root():
+    root = tk.Tk()
+    root.geometry(str(WIDTH_MAIN_WINDOW) + "x" + str(HEIGHT_MAIN_WINDOW))
+    root.columnconfigure(0, minsize=WIDTH_IMAGE_FRAME)
+    root.columnconfigure(1, minsize=WIDTH_IMAGE_FRAME)
+    root.columnconfigure(2, minsize=WIDTH_SEQUENCE_FRAME)
+    root.rowconfigure(0, minsize=HEIGHT_IMAGE_FRAME)
+    root.rowconfigure(1, minsize=HEIGHT_FILTER_FRAME)
+    return root
+
+
+root = configure_root()
 shared = Shared()
 main_window = MainWindow(root, shared)
 # custom_recipe_sequence = list()
