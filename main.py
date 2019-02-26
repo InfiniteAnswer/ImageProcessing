@@ -37,23 +37,6 @@ class Entry:
         return clone
 
 
-#
-#
-# class CallBacks:
-#     @staticmethod
-#     def print_hello(n, m, x):
-#         print("Hello")
-#
-#     @staticmethod
-#     def print_goodbye(n, m, x):
-#         print("Goodbye")
-#
-#     @staticmethod
-#     def add_recipe_line(obj):
-#         instance = obj.clone_entry(custom_recipe_details_frame)
-#         custom_recipe_sequence.append(instance)
-#         instance.frame_object.grid(row=1, column=2)
-
 class Shared:
     def __init__(self):
         self.input_image_filename = "C:/Users/v_sam/Documents/PxlRT/PhotoImages/wheelie.jpg"
@@ -63,13 +46,18 @@ class Shared:
         self.input_imgtk = self.convert_image(self.input_img)
         self.output_img = self.input_img
         self.output_imgtk = self.input_imgtk
-        self.generic_recipes = [["Blur", self.print_hello, ["kernel", 1, 7, 1]],
+        self.generic_recipes = [["Normalise", self.normalise_image, ["Normalise", 0, 1, 1]],
+                                ["Contrast", self.modify_contrast, ["Factor", 0, 5, 0.01]],
+                                ["Blur", self.print_hello, ["kernel", 1, 7, 1]],
                                 ["Crop", self.print_hello, ["X", 0, 1, 0.01], ["Y", 0, 1, 0.01],
                                  ["width", 0, 1, 0.01], ["height", 0, 1, 0.01]],
                                 ["Blqw", self.print_hello, ["matrix", 1, 7, 1]]]
+        self.sequence_listbox = None
+        self.sequence_listbox_entries = list()
 
     def convert_image(self, img):
-        height, width, depth = img.shape
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        height, width = img.shape
         imgScale = self.image_display_width / width
         newX, newY = img.shape[1] * imgScale, img.shape[0] * imgScale
         newimg = cv2.resize(img, (int(newX), int(newY)))
@@ -83,6 +71,27 @@ class Shared:
         self.input_imgtk = shared.input_imgtk
         self.output_img = shared.output_img
         self.output_imgtk = shared.output_imgtk
+
+    def refresh_output_image(self, output_frame):
+        self.output_imgtk = self.convert_image(self.output_img)
+        output_frame.image_label.config(image=self.output_imgtk)
+
+    def normalise_image(self, n, m, x, var, output_frame):
+        print("Normalising")
+        if var.get()==1:
+            min_value = np.amin(self.input_img)
+            self.output_img -= min_value
+            max_value = np.amax(self.output_img)
+            scale = 255.0/max_value
+            self.output_img = (self.output_img * scale).astype(np.uint8)
+        else:
+            self.output_img = self.input_img
+        self.refresh_output_image(output_frame)
+
+    def modify_contrast(self, n, m, x, var, output_frame):
+        print("Modifying contrast")
+        self.output_img = (self.input_img * var.get()).astype(np.uint8)
+        self.refresh_output_image(output_frame)
 
     # @staticmethod
     def print_hello(self, n, m, x, var, output_frame):
@@ -107,12 +116,8 @@ class MainWindow:
     def __init__(self, root, shared):
         self.output_frame = OutputFrame(root, shared)
         self.input_frame = InputFrame(root, self.output_frame, shared)
-        self.filter_frame = FilterFrame(root, self.output_frame, shared)
-        # self.recipe_frame = RecipeFrame(root)
-        # self.input_frame.grid(row=0, column=0)
-        # self.output_frame.grid(row=0, column=1)
-        # self.filter_frame.grid(row=1, column=0, columnspan=2)
-        # self.recipe_frame.grid(row=0, column=2, rowspan=2)
+        self.filter_frame = FilterFrame(root, self.input_frame, self.output_frame, shared)
+        self.sequence_frame = SequenceFrame(root, self.output_frame, self.filter_frame, shared)
 
 
 class InputFrame():
@@ -161,10 +166,11 @@ class OutputFrame:
         self.shared.output_image_filename = filedialog.asksaveasfilename(initialdir="/", title="Select file",
                                                                          filetypes=(
                                                                          ("jpeg files", "*.jpg"), ("all files", "*.*")))
+        cv2.imwrite(self.shared.output_image_filename, self.shared.output_img)
 
 
 class FilterFrame:
-    def __init__(self, root, output_frame, shared):
+    def __init__(self, root, input_frame, output_frame, shared):
         self.filter_frame = tk.Frame(root, width=WIDTH_FILTER_FRAME, height=HEIGHT_FILTER_FRAME, bg="green")
         self.filter_frame.grid(row=1, column=0, columnspan=2)
         self.filter_frame.columnconfigure(0, minsize=WIDTH_FILTER_LISTBOX)
@@ -172,6 +178,7 @@ class FilterFrame:
         self.filter_frame.columnconfigure(2, minsize=WIDTH_FILTER_SLIDER_FRAME)
         self.filter_frame.grid_propagate(0)
         self.shared = shared
+        self.input_frame = input_frame
         self.output_frame = output_frame
         self.recipe_frames = list()
         self.generate_generic_recipe_frames()
@@ -179,15 +186,17 @@ class FilterFrame:
         self.create_listbox_frame()
         self.current_active_recipe_frame = 1
         self.recipe_frames[self.current_active_recipe_frame].frame_object.grid(row=0, column=2, sticky="N")
-        self.recipe_listbox.grid(row=0, column=0, sticky="NW")
+        self.recipe_listbox.grid(row=0, column=0, sticky="NW", padx=PADX)
         self.filter_control_frame = tk.Frame(self.filter_frame)
         self.filter_control_frame.grid(row=0, column=1, sticky="NW")
-        self.add_button = tk.Button(self.filter_control_frame, text="Add")
+        self.add_button = tk.Button(self.filter_control_frame, text="Add", command=self.add_to_sequence)
+        self.output_as_input_button = tk.Button(self.filter_control_frame, text="Use Output as Input", command=self.output_as_input)
         self.mode_variable = tk.IntVar()
         self.mode_variable.set(1)
         self.single_filter_radiobutton = tk.Radiobutton(self.filter_control_frame, text="Single Filter", variable=self.mode_variable, value=1)
         self.sequence_filter_radiobutton = tk.Radiobutton(self.filter_control_frame, text="Sequence Filter", variable=self.mode_variable, value=2)
         self.add_button.pack(anchor="nw")
+        self.output_as_input_button.pack(anchor="nw")
         self.single_filter_radiobutton.pack(anchor="nw")
         self.sequence_filter_radiobutton.pack(anchor="nw")
 
@@ -232,64 +241,39 @@ class FilterFrame:
         self.recipe_frames[index].frame_object.grid(row=0, column=2, sticky="N")
         self.current_active_recipe_frame = index
 
+    def add_to_sequence(self):
+        self.shared.sequence_listbox_entries.append(self.recipe_frames[self.current_active_recipe_frame])
+        self.shared.sequence_listbox.insert(tk.END, self.recipe_frames[self.current_active_recipe_frame].name)
 
-# def generate_generic_recipe_frames():
-#     recipe_frames = list()
-#     for recipe_line in generic_recipes:
-#         new_entry = create_recipe_frame(filters_frame, recipe_line)
-#         recipe_frames.append(new_entry)
-#     return recipe_frames
-# def create_recipe_frame(master_, recipe_line):
-#     frame = tk.Frame(master_)
-#     widget_list = list()
-#     variable_list = list()
-#     for row_, slider_definition in enumerate(recipe_line[2:]):
-#         widget_variable = tk.DoubleVar()
-#         widget_variable.trace("w", recipe_line[1])
-#         widget = tk.Scale(master=frame,
-#                           label=slider_definition[0],
-#                           from_=slider_definition[1],
-#                           to=slider_definition[2],
-#                           resolution=slider_definition[3],
-#                           orient=tk.HORIZONTAL,
-#                           variable=widget_variable,
-#                           bg="yellow",
-#                           length=300)
-#         widget.grid(row=row_, column=0, sticky="E")
-#         widget_list.append(widget)
-#         variable_list.append(widget_variable)
-#     recipe_entry = Entry(frame, widget_list, variable_list)
-#     return recipe_entry
-#
-#
-# def generate_generic_recipe_frames():
-#     recipe_frames = list()
-#     for recipe_line in generic_recipes:
-#         new_entry = create_recipe_frame(filters_frame, recipe_line)
-#         recipe_frames.append(new_entry)
-#     return recipe_frames
-#
-#
-# def import_image(path, target_width):
-#     img = cv2.imread(path)
-#     height, width, depth = img.shape
-#     imgScale = target_width / width
-#     newX, newY = img.shape[1] * imgScale, img.shape[0] * imgScale
-#     newimg = cv2.resize(img, (int(newX), int(newY)))
-#     im = Image.fromarray(newimg)
-#     imgtk = ImageTk.PhotoImage(image=im)
-#     return imgtk
-#
-#
-# def create_input_image_panel(frame):
-#     img = import_image(default_image_path, 200)
-#     image_label = tk.Label(frame, image=img)
-#     image_label.grid(row=0, column=0)
-#     return frame
-#
-# def openfile_callback():
-#     filename = filedialog.askopenfilename(initialdir = "/",title = "Select file",filetypes = (("jpeg files","*.jpg"),("all files","*.*")))
-#     return filename
+    def output_as_input(self):
+        self.shared.input_img = self.shared.output_img
+        self.shared.input_imgtk = self.shared.output_imgtk
+        self.input_frame.image_label.config(image=self.shared.output_imgtk)
+
+
+class SequenceFrame:
+    def __init__(self, root, output_frame, filter_frame, shared):
+        self.sequence_frame = tk.Frame(root, width=WIDTH_SEQUENCE_FRAME, height=HEIGHT_MAIN_WINDOW, bg="blue")
+        self.sequence_frame.grid(row=0, column=2, rowspan=2)
+        self.sequence_frame.columnconfigure(0, minsize=WIDTH_SEQUENCE_FRAME)
+        self.sequence_frame.grid_propagate(0)
+
+        self.sequence_controls = tk.Frame(self.sequence_frame, width=WIDTH_SEQUENCE_FRAME, height=HEIGHT_MAIN_WINDOW, bg="orange")
+        self.sequence_controls.grid(row=1, column=0)
+        self.sequence_controls.columnconfigure(0, minsize=WIDTH_SEQUENCE_FRAME)
+        self.sequence_controls.grid_propagate(0)
+
+        self.shared = shared
+        self.output_frame = output_frame
+        self.filter_frame = filter_frame
+
+        self.shared.sequence_listbox = tk.Listbox(self.sequence_frame, height=int((HEIGHT_MAIN_WINDOW/10*8)/FONT_POINTS_2_PIXELS))
+        self.shared.sequence_listbox.grid(row=0, column=0, sticky="N", pady=PADY)
+
+        self.delete_button = tk.Button(self.sequence_controls, text="DELETE").pack()
+        self.move_up_button = tk.Button(self.sequence_controls, text="MOVE UP").pack()
+        self.move_down_button = tk.Button(self.sequence_controls, text="MOVE_DOWN").pack()
+
 
 def configure_root():
     root = tk.Tk()
@@ -305,46 +289,4 @@ def configure_root():
 root = configure_root()
 shared = Shared()
 main_window = MainWindow(root, shared)
-# custom_recipe_sequence = list()
-#
-# input_image_frame = tk.Frame(root, width=200, height=200, bg="grey90")
-# input_image_frame.grid(row=0,column=0)
-# output_image_frame = tk.Frame(root, width=200, height=200, bg="grey50")
-# output_image_frame.grid(row=0, column=1)
-# filters_frame = tk.Frame(root, width=200, height=200, bg="grey30")
-# filters_frame.grid(row=1, column=0, columnspan=2, sticky="E")
-# custom_recipe_sequence_frame = tk.Frame(root, width=200, height=200, bg="grey70")
-# custom_recipe_sequence_frame.grid(row=0, column=2)
-# custom_recipe_details_frame = tk.Frame(root, width=200, height=200, bg="grey40")
-# custom_recipe_details_frame.grid(row=1, column=2)
-# controls_frame = tk.Frame(root, width=200, height=200, bg="grey50")
-# controls_frame.grid(row=0, column=3)
-#
-#
-# # f = tk.Frame(root) q
-# # f2 = tk.Frame(root)
-#
-# generic_recipes = [["Blur", CallBacks.print_hello, ["kernel", 1, 7, 1]],
-#                    ["Crop", CallBacks.print_goodbye, ["X", 0, 1, 0.01], ["Y", 0, 1, 0.01], ["width", 0, 1, 0.01],
-#                     ["height", 0, 1, 0.01]],
-#                    ["Blqw", CallBacks.print_hello, ["matrix", 1, 7, 1]]]
-#
-# recipe_frames = generate_generic_recipe_frames()
-#
-# recipe_frames[1].frame_object.grid(row=0, column=0, sticky="E")
-# add_button = tk.Button(controls_frame, text="add", command=lambda: CallBacks.add_recipe_line(recipe_frames[1]))
-# add_button.grid(row=0,column=0)
-#
-# default_image_path="C:\\Users\\v_sam\\Documents\\PxlRT\\PhotoImages\\wheelie.jpg"
-# img = import_image(default_image_path, 200)
-# image_label = tk.Label(input_image_frame, image=img)
-# image_label.grid(row=0, column=0)
-# open_button = tk.Button(input_image_frame, text="Open File", command=openfile_callback)
-# open_button.grid(row=1, column=0)
-#
-#
-#
-#
-#
-# # f2.pack()
 root.mainloop()
